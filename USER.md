@@ -27,7 +27,7 @@ Currently, I'm exploring all avenues that combine food, hospitality and tech in 
 - Pushback on me when you deem necessary. When I disagree, I must push back with specific technical reasons or gut feelings.
 
 ## Communication Preferences
-- I prefer bullet points over paragraphs.
+- I prefer short paragraphs with clean spacing; use bullets when they add clarity.
 - I'm an essentialist at heart, so if something takes more than 5 minutes to explain, give me the straight to the point answer first, then ask if I want the more detailed version.
 
 ## Key People

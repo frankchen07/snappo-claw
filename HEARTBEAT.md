@@ -1,5 +1,43 @@
 # HEARTBEAT.md
 
-# Keep this file empty (or with only comments) to skip heartbeat API calls.
+## Daily logs workflow (America/Los_Angeles)
 
-# Add tasks below when you want the agent to check something periodically.
+If there was meaningful work since the last dailylogs entry, update `dailylogs/YYYY-MM-DD.md`.
+
+Time windows:
+- Mid-day pass: target around 13:10
+- End-of-day pass: target around 21:30
+
+Rules:
+- Do not write duplicate entries if no meaningful changes happened.
+- Keep each update concise and readable.
+- Log actions by agent (main + any subagents), key file changes, and open follow-ups.
+- If `dailylogs/YYYY-MM-DD.md` does not exist, create it from the template below.
+
+Template:
+
+# Daily Log — YYYY-MM-DD (America/Los_Angeles)
+
+## Summary
+Main outcomes and notable decisions.
+
+## Actions by Agent
+### main
+- User asks handled
+- Actions taken
+- Result
+
+### subagents
+- Agent/session
+- Task
+- Output
+
+## Workspace Changes
+- Files changed and what changed (short note)
+
+## Learnings
+- User preferences learned today
+- System/process improvements
+
+## Open Items
+- Follow-ups for next session
