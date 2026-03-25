@@ -1,0 +1,26 @@
+# Current Maintenance Snapshot — 2003 Subaru WRX
+Updated: 2026-03-23
+Current odometer: 150,211
+
+## Do Now (monitor-first)
+- Brake fluid flush (over by ~13,811 mi)
+- Clutch fluid flush (over by ~13,811 mi)
+- Wheel alignment (over by ~9,378 mi)
+- Power steering fluid flush (over by ~7,705 mi)
+
+## Next 3-5k Miles (priority)
+- Engine oil + filter (post-rebuild) at **153,181** (~2,970 mi left)
+- Break-in review window end at **155,181** (~4,970 mi left)
+
+## Just Beyond 5k
+- Tire rotation at **155,704** (~5,493 mi left)
+
+## Time/Condition Items
+- Smog check: coming up (verify exact due window)
+- Battery: next around 2029-03
+- Strut/suspension health: condition-based; currently feels okay
+
+## Files
+- Plan data: `workspace/mechanic/data/maintenance-plan.csv`
+- Generator: `workspace/mechanic/scripts/next_services.py`
+- Full schedule: `workspace/mechanic/processed/mechanic-schedule-v2-2026-03-23.md`

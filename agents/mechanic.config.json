@@ -1,0 +1,14 @@
+{
+  "id": "mechanic",
+  "name": "mechanic",
+  "workspace": "/Users/snappo/.openclaw/workspace",
+  "model": {
+    "primary": "anthropic/claude-sonnet-4-5",
+    "fallbacks": [
+      "openai-codex/gpt-5.3-codex",
+      "anthropic/claude-haiku-4-5",
+      "anthropic/claude-opus-4-6"
+    ]
+  },
+  "promptPath": "workspace/agents/mechanic.md"
+}

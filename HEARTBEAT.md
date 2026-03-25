@@ -1,12 +1,8 @@
 # HEARTBEAT.md
 
-## Daily logs workflow (America/Los_Angeles)
+## Daily logs workflow
 
-If there was meaningful work since the last dailylogs entry, update `dailylogs/YYYY-MM-DD.md`.
-
-Time windows:
-- Mid-day pass: target around 13:10
-- End-of-day pass: target around 21:30
+When frank asks for a report, update `dailylogs/YYYY-MM-DD.md` with meaningful work since the last entry.
 
 Rules:
 - Do not write duplicate entries if no meaningful changes happened.

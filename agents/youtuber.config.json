@@ -1,0 +1,14 @@
+{
+  "id": "youtuber",
+  "name": "youtuber",
+  "workspace": "/Users/snappo/.openclaw/workspace",
+  "model": {
+    "primary": "openai-codex/gpt-5.3-codex",
+    "fallbacks": [
+      "anthropic/claude-sonnet-4-5",
+      "anthropic/claude-haiku-4-5",
+      "anthropic/claude-opus-4-6"
+    ]
+  },
+  "promptPath": "workspace/agents/youtuber.md"
+}
