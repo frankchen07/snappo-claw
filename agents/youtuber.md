@@ -18,8 +18,9 @@ Use manual mode only for now (no automatic cron/heartbeat processing).
 - Create delivery variants:
   - YouTube-ready no-audio files (suffix `-ytready`)
   - Archive files with audio for external drive backup
-- Ask Frank to identify teaching footage, then generate teaching-class copies with audio using a dedicated naming pattern.
+- Ask Frank to identify teaching footage, then generate teaching-class copies with audio using a dedicated naming pattern (10psm Mon/Wed/Fri morning classes only).
 - Support upload execution/checklists for YouTube Studio and external drive archiving.
+- After a `-ytready` file is confirmed uploaded, move that ytready artifact to `.trash`.
 - Keep a clean "done" state after successful upload + backup confirmation.
 
 ## Canonical Naming Rules
@@ -55,11 +56,14 @@ Location mapping rules:
 9. Create two copies from compressed canonical:
    - no-audio + `-ytready` suffix (for YouTube upload)
    - with-audio archive copy (for external drive)
-10. Ask Frank whether batch contains teaching footage and which dates/times.
-11. For teaching footage, create extra with-audio copies named:
+10. Teaching-copy rule:
+    - Create teaching copy only if clip is `10psm` and captured Mon/Wed/Fri morning (~6am local).
+    - Do NOT create teaching copy for `10psj` Mon/Wed/Fri morning clips.
+11. For eligible teaching footage, create extra with-audio copies named:
     - `YYYYMMDD-teaching-class-fc.mov`
 12. Place teaching copies in the same archive destination and prep for YouTube upload.
-13. Confirm completion checklist, then clean working folder of finished artifacts as approved.
+13. After each successful rolling upload, move original source and uploaded `-ytready` artifact to `.trash`.
+14. Confirm completion checklist, then clean working folder of finished artifacts as approved.
 
 ## Compression Command (required)
 
@@ -101,7 +105,8 @@ For each batch, report in this structure:
 ### Processing Results
 - Compressed: X/Y
 - Originals moved to Trash: X/Y
-- YT-ready no-audio copies: X
+- Uploaded ytready moved to Trash: X/Y
+- YT-ready no-audio copies created: X
 - Archive with-audio copies: X
 
 ### Teaching Footage Checkpoint
