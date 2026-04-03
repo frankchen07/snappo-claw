@@ -2,3 +2,5 @@
 .env
 jjvideos/
 mechanic/inbox/*.pdf
+client_secrets.json
+request.token

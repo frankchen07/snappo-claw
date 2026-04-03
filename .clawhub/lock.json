@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills-skill": {
+      "version": "1.0.0",
+      "installedAt": 1774762142465
+    },
+    "proactive-agent-lite": {
+      "version": "1.0.0",
+      "installedAt": 1774762351811
+    },
+    "openclaw-tavily-search": {
+      "version": "0.1.0",
+      "installedAt": 1774762649955
+    }
+  }
+}
