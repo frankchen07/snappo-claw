@@ -12,9 +12,12 @@ set -euo pipefail
 #   1. Parse creation_time → canonical name: YYYYMMDD-dayofweektimeofday-LOC-rolling-footage-viewN.mov
 #   2. Compress with audio → sstready/ (archive)
 #   3. Compress without audio → ytready/ (upload)
-#   4. If 10psm + Mon/Wed/Fri + ~6am PST → copy archive as YYYYMMDD-teaching-class-fc.mov
+#   4. If 10psm + Mon/Wed/Fri + ~6am PST → create teaching copies in both:
+#      - sstready/ as YYYYMMDD-teaching-class-fc.mov (archive)
+#      - ytready/  as YYYYMMDD-teaching-class-fc-ytready.mov (upload)
 #   5. Upload to YouTube with playlist routing
 #   6. Move original and uploaded ytready artifact to .trash/
+#   7. After confirmed upload, move matching sstready archive to sstready/.uncopied/
 #
 # Teaching videos: public + Teaching Snippets playlist (10psm morning classes only)
 # Rolling videos: unlisted + location playlist (if 10psj/10psm)
@@ -24,10 +27,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSTREADY="$SCRIPT_DIR/sstready"
+SST_UNCOPIED="$SSTREADY/.uncopied"
 YTREADY="$SCRIPT_DIR/ytready"
 TRASH="$SCRIPT_DIR/.trash"
 
-mkdir -p "$SSTREADY" "$YTREADY" "$TRASH"
+mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH"
 
 command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not found"; exit 1; }
 command -v ffprobe >/dev/null 2>&1 || { echo "ffprobe not found"; exit 1; }
@@ -249,7 +253,8 @@ for i in "${!FILE_LIST[@]}"; do
   # --- Teaching video detection ---
   # Rule: create teaching copy only for 10psm Mon/Wed/Fri ~6am videos.
   # 10psj morning classes should NOT create a teaching copy.
-  teaching_out=""
+  teaching_sst_out=""
+  teaching_yt_out=""
   is_teaching_day=false
   [[ "$dow" == "1" || "$dow" == "3" || "$dow" == "5" ]] && is_teaching_day=true
   total_min=$((10#$hour * 60 + 10#$minute))
@@ -257,12 +262,22 @@ for i in "${!FILE_LIST[@]}"; do
   [[ $total_min -ge 345 && $total_min -le 375 ]] && is_teaching_time=true
 
   if [[ "$loc" == "10psm" ]] && $is_teaching_day && $is_teaching_time; then
-    teaching_out="$SSTREADY/${datestamp}-teaching-class-fc.mov"
-    if [[ -f "$teaching_out" ]]; then
-      echo "  [teaching] Already exists: $(basename "$teaching_out")"
+    teaching_base="${datestamp}-teaching-class-fc"
+    teaching_sst_out="$SSTREADY/${teaching_base}.mov"
+    teaching_yt_out="$YTREADY/${teaching_base}-ytready.mov"
+
+    if [[ -f "$teaching_sst_out" ]]; then
+      echo "  [teaching] SST already exists: $(basename "$teaching_sst_out")"
     else
-      echo "  [teaching] 10psm Mon/Wed/Fri ~6am → copying as $(basename "$teaching_out")"
-      cp "$sst_out" "$teaching_out"
+      echo "  [teaching] 10psm Mon/Wed/Fri ~6am → creating SST $(basename "$teaching_sst_out")"
+      cp "$sst_out" "$teaching_sst_out"
+    fi
+
+    if [[ -f "$teaching_yt_out" ]]; then
+      echo "  [teaching] YT already exists: $(basename "$teaching_yt_out")"
+    else
+      echo "  [teaching] 10psm Mon/Wed/Fri ~6am → creating YT $(basename "$teaching_yt_out")"
+      cp "$yt_out" "$teaching_yt_out"
     fi
   else
     echo "  [teaching] No teaching copy ($(day_name "$dow"), ${hour}:${minute}, loc=${loc})"
@@ -283,9 +298,12 @@ for i in "${!FILE_LIST[@]}"; do
   fi
 
   # --- Upload teaching video if created ---
-  if [[ -n "$teaching_out" && -f "$teaching_out" ]]; then
-    teaching_title=$(basename "$teaching_out" .mov)
-    yt_upload "$teaching_out" "$teaching_title" "public" "$PLAYLIST_TEACHING" || true
+  teaching_uploaded=false
+  if [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
+    teaching_title=$(basename "$teaching_yt_out" -ytready.mov)
+    if yt_upload "$teaching_yt_out" "$teaching_title" "public" "$PLAYLIST_TEACHING"; then
+      teaching_uploaded=true
+    fi
   fi
 
   # --- Move original to .trash ---
@@ -308,6 +326,29 @@ for i in "${!FILE_LIST[@]}"; do
     fi
     echo "  [trash] Moving uploaded ytready to .trash/"
     mv "$yt_out" "$yt_trash_dest"
+  fi
+
+  # --- Move teaching ytready artifact to .trash (if uploaded) ---
+  if $teaching_uploaded && [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
+    teach_name=$(basename "$teaching_yt_out")
+    teach_trash_dest="$TRASH/$teach_name"
+    if [[ -f "$teach_trash_dest" ]]; then
+      ts=$(date +%s)
+      teach_trash_dest="$TRASH/${teach_name%.mov}-$ts.mov"
+    fi
+    echo "  [trash] Moving uploaded teaching ytready to .trash/"
+    mv "$teaching_yt_out" "$teach_trash_dest"
+  fi
+
+  # --- Move matching sstready archive(s) to sstready/.uncopied after successful upload(s) ---
+  if [[ -f "$sst_out" ]]; then
+    echo "  [sstready] Moving uploaded archive to sstready/.uncopied/"
+    mv "$sst_out" "$SST_UNCOPIED/" || true
+  fi
+
+  if $teaching_uploaded && [[ -n "$teaching_sst_out" && -f "$teaching_sst_out" ]]; then
+    echo "  [sstready] Moving uploaded teaching archive to sstready/.uncopied/"
+    mv "$teaching_sst_out" "$SST_UNCOPIED/" || true
   fi
 
   echo ""
