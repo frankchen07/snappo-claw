@@ -30,8 +30,18 @@ SSTREADY="$SCRIPT_DIR/sstready"
 SST_UNCOPIED="$SSTREADY/.uncopied"
 YTREADY="$SCRIPT_DIR/ytready"
 TRASH="$SCRIPT_DIR/.trash"
+LOG_DIR="$SCRIPT_DIR/../rawlogs"
+LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
+LOG_FILE="$LOG_DIR/${LOG_DATE}-youtuber.md"
 
-mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH"
+mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
+
+# --- Logging (rawlogs/YYYY-MM-DD-youtuber.md) ---
+{
+  echo "## Run: $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M:%S %Z')"
+  echo ""
+} >> "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not found"; exit 1; }
 command -v ffprobe >/dev/null 2>&1 || { echo "ffprobe not found"; exit 1; }
