@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# --- Prevent macOS idle/disk sleep for the duration of this script ---
+if [[ -z "${CAFFEINATED:-}" ]]; then
+  export CAFFEINATED=1
+  exec caffeinate -i "$0" "$@"
+fi
+
 # === JJ Video Processing Pipeline ===
 #
 # Input structure:
@@ -35,6 +41,12 @@ LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/${LOG_DATE}-youtuber.md"
 
 mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
+
+# --- PID file: lets monitor cron reliably detect if we're still running ---
+PIDFILE="$SCRIPT_DIR/.process.pid"
+STATUS_FILE="$SCRIPT_DIR/.process.status"
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
 
 UPLOAD_ONLY=false
 CONVERT_ONLY=false
@@ -390,6 +402,7 @@ for i in "${!FILE_LIST[@]}"; do
   echo ""
 done
 
+echo "done | $(TZ="America/Los_Angeles" date '+%Y-%m-%d %H:%M %Z') | mode: ${1:-full}" > "$STATUS_FILE"
 echo "=== All done ==="
 echo "  Archive (with audio): $SSTREADY/"
 echo "  YouTube (no audio):   $YTREADY/"
