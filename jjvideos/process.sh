@@ -16,8 +16,8 @@ set -euo pipefail
 #      - sstready/ as YYYYMMDD-teaching-class-fc.mov (archive)
 #      - ytready/  as YYYYMMDD-teaching-class-fc-ytready.mov (upload)
 #   5. Upload to YouTube with playlist routing
-#   6. Move original and uploaded ytready artifact to .trash/
-#   7. After confirmed upload, move matching sstready archive to sstready/.uncopied/
+#   6. After both conversions confirmed: move original → macOS Trash, sstready → sstready/.uncopied/
+#   7. After confirmed upload: move ytready artifact → macOS Trash
 #
 # Teaching videos: public + Teaching Snippets playlist (10psm morning classes only)
 # Rolling videos: unlisted + location playlist (if 10psj/10psm)
@@ -35,6 +35,9 @@ LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/${LOG_DATE}-youtuber.md"
 
 mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
+
+UPLOAD_ONLY=false
+[[ "${1:-}" == "--upload-only" ]] && UPLOAD_ONLY=true
 
 # --- Logging (rawlogs/YYYY-MM-DD-youtuber.md) ---
 {
@@ -85,6 +88,15 @@ get_epoch() {
   date -j -u -f "%Y-%m-%dT%H:%M:%S" "$clean" +%s 2>/dev/null || echo ""
 }
 
+move_to_trash() {
+  local file="$1"
+  local bname
+  bname=$(basename "$file")
+  local dest="$TRASH/$bname"
+  [[ -e "$dest" ]] && dest="$TRASH/${bname%.mov}-$(date +%s).mov"
+  mv "$file" "$dest"
+}
+
 yt_upload() {
   local file="$1" title="$2" privacy="$3" playlist_id="${4:-}"
   local meta="$SCRIPT_DIR/.meta-tmp.json"
@@ -125,6 +137,40 @@ EOF
     return 1
   fi
 }
+
+# --- Upload-only mode: upload remaining ytready files, skip conversion ---
+if $UPLOAD_ONLY; then
+  echo "=== Upload-only mode ==="
+  shopt -s nullglob
+  ytready_files=("$YTREADY"/*.mov)
+  shopt -u nullglob
+  if [[ ${#ytready_files[@]} -eq 0 ]]; then
+    echo "No .mov files in ytready/. Nothing to upload."
+    exit 0
+  fi
+  echo "Found ${#ytready_files[@]} file(s) in ytready/"
+  echo ""
+  for f in "${ytready_files[@]}"; do
+    bname=$(basename "$f" .mov)
+    title="${bname%-ytready}"
+    privacy="unlisted"
+    playlist=""
+    if [[ "$bname" == *"teaching-class-fc-ytready"* ]]; then
+      privacy="public"
+      playlist="$PLAYLIST_TEACHING"
+    elif [[ "$bname" == *"-10psj-"* ]]; then
+      playlist="$PLAYLIST_10PSJ"
+    elif [[ "$bname" == *"-10psm-"* ]]; then
+      playlist="$PLAYLIST_10PSM"
+    fi
+    if yt_upload "$f" "$title" "$privacy" "$playlist"; then
+      move_to_trash "$f"
+    fi
+    echo ""
+  done
+  echo "=== Upload-only done ==="
+  exit 0
+fi
 
 # --- Collect all input files with location tags ---
 # Format per line: epoch|filepath|location
@@ -269,7 +315,7 @@ for i in "${!FILE_LIST[@]}"; do
   [[ "$dow" == "1" || "$dow" == "3" || "$dow" == "5" ]] && is_teaching_day=true
   total_min=$((10#$hour * 60 + 10#$minute))
   is_teaching_time=false
-  [[ $total_min -ge 345 && $total_min -le 375 ]] && is_teaching_time=true
+  [[ $total_min -ge 345 && $total_min -le 390 ]] && is_teaching_time=true
 
   if [[ "$loc" == "10psm" ]] && $is_teaching_day && $is_teaching_time; then
     teaching_base="${datestamp}-teaching-class-fc"
@@ -293,6 +339,17 @@ for i in "${!FILE_LIST[@]}"; do
     echo "  [teaching] No teaching copy ($(day_name "$dow"), ${hour}:${minute}, loc=${loc})"
   fi
 
+  # --- Post-conversion cleanup: source → macOS Trash, sstready → .uncopied ---
+  # Decoupled from upload — runs as soon as both conversion outputs are confirmed.
+  if [[ -f "$sst_out" && -f "$yt_out" ]]; then
+    echo "  [cleanup] Conversions confirmed — trashing source, archiving sstready"
+    move_to_trash "$input_file"
+    mv "$sst_out" "$SST_UNCOPIED/"
+    [[ -n "$teaching_sst_out" && -f "$teaching_sst_out" ]] && mv "$teaching_sst_out" "$SST_UNCOPIED/"
+  else
+    echo "  [cleanup] WARNING: conversion output missing — skipping source cleanup"
+  fi
+
   # --- Upload ytready to YouTube ---
   # Determine playlist and privacy for rolling footage
   rolling_playlist=""
@@ -302,63 +359,23 @@ for i in "${!FILE_LIST[@]}"; do
   esac
 
   if ! yt_upload "$yt_out" "${canonical_base}-ytready" "unlisted" "$rolling_playlist"; then
-    echo "  [skip] Upload failed — keeping original, skipping trash."
+    echo "  [skip] Upload failed — source already trashed, sstready archived. ytready kept for retry."
     echo ""
     continue
   fi
 
+  # --- Move uploaded rolling ytready to macOS Trash ---
+  echo "  [trash] Moving uploaded ytready to macOS Trash"
+  move_to_trash "$yt_out"
+
   # --- Upload teaching video if created ---
-  teaching_uploaded=false
   if [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
-    teaching_title=$(basename "$teaching_yt_out" -ytready.mov)
+    teaching_title=$(basename "$teaching_yt_out" .mov)
+    teaching_title="${teaching_title%-ytready}"
     if yt_upload "$teaching_yt_out" "$teaching_title" "public" "$PLAYLIST_TEACHING"; then
-      teaching_uploaded=true
+      echo "  [trash] Moving uploaded teaching ytready to macOS Trash"
+      move_to_trash "$teaching_yt_out"
     fi
-  fi
-
-  # --- Move original to .trash ---
-  trash_dest="$TRASH/$filename"
-  if [[ -f "$trash_dest" ]]; then
-    echo "  [trash] Original already in .trash, removing source copy."
-    rm -f "$input_file"
-  else
-    echo "  [trash] Moving original to .trash/"
-    mv "$input_file" "$trash_dest"
-  fi
-
-  # --- Move uploaded ytready artifact to .trash ---
-  yt_name=$(basename "$yt_out")
-  yt_trash_dest="$TRASH/$yt_name"
-  if [[ -f "$yt_out" ]]; then
-    if [[ -f "$yt_trash_dest" ]]; then
-      ts=$(date +%s)
-      yt_trash_dest="$TRASH/${yt_name%.mov}-$ts.mov"
-    fi
-    echo "  [trash] Moving uploaded ytready to .trash/"
-    mv "$yt_out" "$yt_trash_dest"
-  fi
-
-  # --- Move teaching ytready artifact to .trash (if uploaded) ---
-  if $teaching_uploaded && [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
-    teach_name=$(basename "$teaching_yt_out")
-    teach_trash_dest="$TRASH/$teach_name"
-    if [[ -f "$teach_trash_dest" ]]; then
-      ts=$(date +%s)
-      teach_trash_dest="$TRASH/${teach_name%.mov}-$ts.mov"
-    fi
-    echo "  [trash] Moving uploaded teaching ytready to .trash/"
-    mv "$teaching_yt_out" "$teach_trash_dest"
-  fi
-
-  # --- Move matching sstready archive(s) to sstready/.uncopied after successful upload(s) ---
-  if [[ -f "$sst_out" ]]; then
-    echo "  [sstready] Moving uploaded archive to sstready/.uncopied/"
-    mv "$sst_out" "$SST_UNCOPIED/" || true
-  fi
-
-  if $teaching_uploaded && [[ -n "$teaching_sst_out" && -f "$teaching_sst_out" ]]; then
-    echo "  [sstready] Moving uploaded teaching archive to sstready/.uncopied/"
-    mv "$teaching_sst_out" "$SST_UNCOPIED/" || true
   fi
 
   echo ""
