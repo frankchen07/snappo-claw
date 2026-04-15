@@ -37,7 +37,9 @@ LOG_FILE="$LOG_DIR/${LOG_DATE}-youtuber.md"
 mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
 
 UPLOAD_ONLY=false
+CONVERT_ONLY=false
 [[ "${1:-}" == "--upload-only" ]] && UPLOAD_ONLY=true
+[[ "${1:-}" == "--convert-only" ]] && CONVERT_ONLY=true
 
 # --- Logging (rawlogs/YYYY-MM-DD-youtuber.md) ---
 {
@@ -350,6 +352,13 @@ for i in "${!FILE_LIST[@]}"; do
     echo "  [cleanup] WARNING: conversion output missing — skipping source cleanup"
   fi
 
+  # --- Skip upload if convert-only mode ---
+  if $CONVERT_ONLY; then
+    echo "  [convert-only] Conversions done. Skipping upload — run --upload-only to finish."
+    echo ""
+    continue
+  fi
+
   # --- Upload ytready to YouTube ---
   # Determine playlist and privacy for rolling footage
   rolling_playlist=""
@@ -365,7 +374,7 @@ for i in "${!FILE_LIST[@]}"; do
   fi
 
   # --- Move uploaded rolling ytready to macOS Trash ---
-  echo "  [trash] Moving uploaded ytready to macOS Trash"
+  echo "  [trash] Moving uploaded ytready to .trash/"
   move_to_trash "$yt_out"
 
   # --- Upload teaching video if created ---
@@ -373,7 +382,7 @@ for i in "${!FILE_LIST[@]}"; do
     teaching_title=$(basename "$teaching_yt_out" .mov)
     teaching_title="${teaching_title%-ytready}"
     if yt_upload "$teaching_yt_out" "$teaching_title" "public" "$PLAYLIST_TEACHING"; then
-      echo "  [trash] Moving uploaded teaching ytready to macOS Trash"
+      echo "  [trash] Moving uploaded teaching ytready to .trash/"
       move_to_trash "$teaching_yt_out"
     fi
   fi
