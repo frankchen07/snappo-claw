@@ -304,17 +304,16 @@ for i in "${!FILE_LIST[@]}"; do
     echo "  [sstready] Done: $(du -h "$sst_out" | cut -f1)"
   fi
 
-  # --- Compress without audio → ytready ---
+  # --- Strip audio from sstready → ytready (stream copy, near-instant) ---
   yt_out="$YTREADY/${canonical_base}-ytready.mov"
   if [[ -f "$yt_out" ]]; then
     echo "  [ytready] Already exists, skipping."
+  elif [[ ! -f "$sst_out" ]]; then
+    echo "  [ytready] WARN: sstready missing, cannot create ytready."
   else
-    echo "  [ytready] Compressing without audio..."
-    ffmpeg -y -loglevel error -hide_banner -nostats -i "$input_file" \
-      -c:v libx264 -profile:v high -level 4.1 -preset veryfast -crf 23 \
-      -vf "scale=1280:720,fps=30" \
-      -b:v 8083k \
-      -an \
+    echo "  [ytready] Stripping audio from sstready (stream copy)..."
+    ffmpeg -y -loglevel error -hide_banner -nostats -i "$sst_out" \
+      -c:v copy -an \
       -movflags +faststart \
       "$yt_out"
     echo "  [ytready] Done: $(du -h "$yt_out" | cut -f1)"
