@@ -34,3 +34,5 @@
 - **YouTube account:** frankthetankjj (frankchen07@gmail.com)
 - **Credentials:** `client_secrets.json` + `request.token` in jjvideos/ (gitignored)
 - **Playlist IDs:** Teaching=PLqn-1QlUBKlCBo9J2Pc63uJL-YkgOMzf-, 10PSJ=PLqn-1QlUBKlDGWyP6FKdvPui8W74wLB3m, 10PSM=PLqn-1QlUBKlCyjUBDOYWXW1Wtw5SI4wNI
+2026-04-16 23:40:22 - Starting memory distillation
+2026-04-16 23:42:08 - Memory distillation complete
