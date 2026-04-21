@@ -48,6 +48,12 @@ STATUS_FILE="$SCRIPT_DIR/.process.status"
 echo $$ > "$PIDFILE"
 trap 'rm -f "$PIDFILE"' EXIT
 
+# --- Upload state: daily quota management ---
+UPLOAD_STATE="$SCRIPT_DIR/.upload-state.tsv"
+MAX_DAILY_UPLOADS="${YT_DAILY_LIMIT:-6}"
+QUOTA_EXCEEDED=false
+touch "$UPLOAD_STATE"
+
 UPLOAD_ONLY=false
 CONVERT_ONLY=false
 [[ "${1:-}" == "--upload-only" ]] && UPLOAD_ONLY=true
@@ -111,9 +117,34 @@ move_to_trash() {
   mv "$file" "$dest"
 }
 
+daily_upload_count() {
+  grep -c "^$(TZ="America/Los_Angeles" date +%Y-%m-%d)" "$UPLOAD_STATE" 2>/dev/null || true
+}
+
+already_uploaded() {
+  local name="$1"
+  grep -qF $'\t'"$name"$'\t' "$UPLOAD_STATE" 2>/dev/null
+}
+
 yt_upload() {
   local file="$1" title="$2" privacy="$3" playlist_id="${4:-}"
   local meta="$SCRIPT_DIR/.meta-tmp.json"
+  local bname
+  bname=$(basename "$file" .mov)
+
+  # Skip if already recorded in state (any date)
+  if already_uploaded "$bname"; then
+    echo "  [upload] Already uploaded, skipping: $bname"
+    return 0
+  fi
+
+  # Enforce daily cap before attempting
+  local today_count
+  today_count=$(daily_upload_count)
+  if [[ $today_count -ge $MAX_DAILY_UPLOADS ]]; then
+    echo "  [upload] Daily limit reached ($today_count/$MAX_DAILY_UPLOADS). Override: YT_DAILY_LIMIT=N. Run again tomorrow."
+    return 2
+  fi
 
   cat > "$meta" <<EOF
 {
@@ -143,9 +174,14 @@ EOF
   rm -f "$meta"
 
   if echo "$result" | grep -q "Video ID:"; then
-    local vid=$(echo "$result" | grep "Video ID:" | sed 's/.*Video ID: //')
+    local vid
+    vid=$(echo "$result" | grep "Video ID:" | sed 's/.*Video ID: //')
     echo "  [upload] Success! ID: ${vid} → https://studio.youtube.com/video/${vid}/edit"
+    printf '%s\t%s\t%s\n' "$(TZ="America/Los_Angeles" date +%Y-%m-%d)" "$bname" "$vid" >> "$UPLOAD_STATE"
     return 0
+  elif echo "$result" | grep -qi "quota\|quotaExceeded"; then
+    echo "  [upload] QUOTA EXCEEDED — stopping uploads for today. Run again tomorrow."
+    return 2
   else
     echo "  [upload] FAILED: $result"
     return 1
@@ -177,8 +213,13 @@ if $UPLOAD_ONLY; then
     elif [[ "$bname" == *"-10psm-"* ]]; then
       playlist="$PLAYLIST_10PSM"
     fi
-    if yt_upload "$f" "$title" "$privacy" "$playlist"; then
+    upload_exit=0
+    yt_upload "$f" "$title" "$privacy" "$playlist" || upload_exit=$?
+    if [[ $upload_exit -eq 0 ]]; then
       move_to_trash "$f"
+    elif [[ $upload_exit -eq 2 ]]; then
+      echo ""
+      break
     fi
     echo ""
   done
@@ -363,9 +404,14 @@ for i in "${!FILE_LIST[@]}"; do
     echo "  [cleanup] WARNING: conversion output missing — skipping source cleanup"
   fi
 
-  # --- Skip upload if convert-only mode ---
+  # --- Skip upload if convert-only mode or quota already exceeded this run ---
   if $CONVERT_ONLY; then
     echo "  [convert-only] Conversions done. Skipping upload — run --upload-only to finish."
+    echo ""
+    continue
+  fi
+  if $QUOTA_EXCEEDED; then
+    echo "  [upload] Skipping — daily quota reached. Run --upload-only tomorrow."
     echo ""
     continue
   fi
@@ -378,7 +424,13 @@ for i in "${!FILE_LIST[@]}"; do
     10psm) rolling_playlist="$PLAYLIST_10PSM" ;;
   esac
 
-  if ! yt_upload "$yt_out" "${canonical_base}-ytready" "unlisted" "$rolling_playlist"; then
+  upload_exit=0
+  yt_upload "$yt_out" "${canonical_base}-ytready" "unlisted" "$rolling_playlist" || upload_exit=$?
+  if [[ $upload_exit -eq 2 ]]; then
+    QUOTA_EXCEEDED=true
+    echo ""
+    continue
+  elif [[ $upload_exit -ne 0 ]]; then
     echo "  [skip] Upload failed — source already trashed, sstready archived. ytready kept for retry."
     echo ""
     continue
@@ -392,7 +444,11 @@ for i in "${!FILE_LIST[@]}"; do
   if [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
     teaching_title=$(basename "$teaching_yt_out" .mov)
     teaching_title="${teaching_title%-ytready}"
-    if yt_upload "$teaching_yt_out" "$teaching_title" "public" "$PLAYLIST_TEACHING"; then
+    upload_exit=0
+    yt_upload "$teaching_yt_out" "$teaching_title" "public" "$PLAYLIST_TEACHING" || upload_exit=$?
+    if [[ $upload_exit -eq 2 ]]; then
+      QUOTA_EXCEEDED=true
+    elif [[ $upload_exit -eq 0 ]]; then
       echo "  [trash] Moving uploaded teaching ytready to .trash/"
       move_to_trash "$teaching_yt_out"
     fi

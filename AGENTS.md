@@ -65,6 +65,18 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 
 Voice Storytelling: If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
+## Cron Jobs & Automation
+
+Before scheduling ANY cron job or recurring task:
+1. Tell Frank what it will do, how often, and which model/agent will run it
+2. Wait for explicit confirmation ("yes", "go ahead", "do it") before creating it
+3. Exception: you may skip confirmation for one-shot reminders Frank explicitly asked you to set ("remind me at 3pm")
+
+Model defaults for ad-hoc jobs (main agent creating a job inline):
+- Simple reminders / one-line status checks → `model: "ollama/qwen3:8b"` in payload
+- Anything requiring reasoning, file reads, or multi-step logic → no model override (use agent default)
+- Never use cloud models in a cron payload unless the job genuinely needs cloud-scale reasoning
+
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.
