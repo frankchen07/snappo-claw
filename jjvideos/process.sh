@@ -45,6 +45,7 @@ mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
 # --- PID file: lets monitor cron reliably detect if we're still running ---
 PIDFILE="$SCRIPT_DIR/.process.pid"
 STATUS_FILE="$SCRIPT_DIR/.process.status"
+PROGRESS_FILE="$SCRIPT_DIR/.process.progress"
 echo $$ > "$PIDFILE"
 trap 'rm -f "$PIDFILE"' EXIT
 
@@ -65,6 +66,8 @@ CONVERT_ONLY=false
   echo ""
 } >> "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "starting | $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M %Z') | pid: $$" > "$STATUS_FILE"
 
 command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg not found"; exit 1; }
 command -v ffprobe >/dev/null 2>&1 || { echo "ffprobe not found"; exit 1; }
@@ -160,6 +163,7 @@ EOF
   fi
 
   echo "  [upload] '${title}' → ${privacy}${playlist_id:+ + playlist}..."
+  echo "uploading | $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M %Z') | ${bname} | ${privacy}" > "$PROGRESS_FILE"
   local result
   result=$(youtubeuploader \
     -filename "$file" \
@@ -178,6 +182,7 @@ EOF
     vid=$(echo "$result" | grep "Video ID:" | sed 's/.*Video ID: //')
     echo "  [upload] Success! ID: ${vid} → https://studio.youtube.com/video/${vid}/edit"
     printf '%s\t%s\t%s\n' "$(TZ="America/Los_Angeles" date +%Y-%m-%d)" "$bname" "$vid" >> "$UPLOAD_STATE"
+    echo "uploaded | $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M %Z') | ${bname} | ${vid}" > "$PROGRESS_FILE"
     return 0
   elif echo "$result" | grep -qi "quota\|quotaExceeded"; then
     echo "  [upload] QUOTA EXCEEDED — stopping uploads for today. Run again tomorrow."
@@ -315,6 +320,7 @@ done <<< "$work_list"
 
 # --- Process each file ---
 for i in "${!FILE_LIST[@]}"; do
+  echo "processing | $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M %Z') | $(basename "${FILE_LIST[$i]}") | $((i+1))/${#FILE_LIST[@]}" > "$PROGRESS_FILE"
   input_file="${FILE_LIST[$i]}"
   canonical_base="${CANONICAL_LIST[$i]}"
   loc="${LOCATION_LIST[$i]}"
@@ -457,7 +463,8 @@ for i in "${!FILE_LIST[@]}"; do
   echo ""
 done
 
-echo "done | $(TZ="America/Los_Angeles" date '+%Y-%m-%d %H:%M %Z') | mode: ${1:-full}" > "$STATUS_FILE"
+echo "done | $(TZ="America/Los_Angeles" date '+%Y-%m-%d %H:%M %Z') | mode: ${1:-full} | files: ${#FILE_LIST[@]} | uploaded: $(wc -l < "$UPLOAD_STATE" | tr -d ' ')" > "$STATUS_FILE"
+rm -f "$PROGRESS_FILE"
 echo "=== All done ==="
 echo "  Archive (with audio): $SSTREADY/"
 echo "  YouTube (no audio):   $YTREADY/"
