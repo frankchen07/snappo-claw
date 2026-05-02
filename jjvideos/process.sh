@@ -15,20 +15,27 @@ fi
 #   jjvideos/10psm/     ← 10psm (10PSM Rolling Footage playlist, unlisted)
 #
 # Pipeline per file:
-#   1. Parse creation_time → canonical name: YYYYMMDD-dayofweektimeofday-LOC-rolling-footage-viewN.mov
+#   1. Read creation_time in UTC, convert to America/Los_Angeles, then derive canonical name:
+#      YYYYMMDD-dayofweektimeofday-LOC-rolling-footage-viewN.mov
 #   2. Compress with audio → sstready/ (archive)
 #   3. Compress without audio → ytready/ (upload)
-#   4. If 10psm + Mon/Wed/Fri + ~6am PST → create teaching copies in both:
+#   4. If 10psm + Mon/Wed/Fri + 05:45-06:30 PST → create teaching copies in both:
 #      - sstready/ as YYYYMMDD-teaching-class-fc.mov (archive)
 #      - ytready/  as YYYYMMDD-teaching-class-fc-ytready.mov (upload)
 #   5. Upload to YouTube with playlist routing
 #   6. After both conversions confirmed: move original → macOS Trash, sstready → sstready/.uncopied/
 #   7. After confirmed upload: move ytready artifact → macOS Trash
 #
-# Teaching videos: public + Teaching Snippets playlist (10psm morning classes only)
-# Rolling videos: unlisted + location playlist (if 10psj/10psm)
+# Rules:
+# - 10psj morning classes are never teaching videos.
+# - Root jjvideos/ files are 10p fallback and have no playlist.
+# - Rolling videos are unlisted + location playlist (if 10psj/10psm).
+# - Every rename is recorded in a dated ledger for backtracking.
 #
-# Time of day (PST): 4am-12pm=morning, 12pm-6pm=afternoon, 6pm-midnight=night
+# Time of day in PST/PDT local time:
+#   morning = 04:00-11:59
+#   afternoon = 12:00-17:59
+#   night = 18:00-23:59
 # Views: auto-numbered by creation time within same date+timeofday+location session
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,21 +43,16 @@ SSTREADY="$SCRIPT_DIR/sstready"
 SST_UNCOPIED="$SSTREADY/.uncopied"
 YTREADY="$SCRIPT_DIR/ytready"
 TRASH="$SCRIPT_DIR/.trash"
-LOG_DIR="$SCRIPT_DIR/../rawlogs"
+LOG_DIR="$SCRIPT_DIR/logs"
 LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
-LOG_FILE="$LOG_DIR/${LOG_DATE}-youtuber.md"
+LOG_FILE="$LOG_DIR/${LOG_DATE}-process.md"
+RENAME_LEDGER="$LOG_DIR/${LOG_DATE}-renames.tsv"
 
 mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
-
-# --- PID file: lets monitor cron reliably detect if we're still running ---
-PIDFILE="$SCRIPT_DIR/.process.pid"
-STATUS_FILE="$SCRIPT_DIR/.process.status"
-PROGRESS_FILE="$SCRIPT_DIR/.process.progress"
-echo $$ > "$PIDFILE"
-trap 'rm -f "$PIDFILE"' EXIT
+touch "$RENAME_LEDGER"
 
 # --- Upload state: daily quota management ---
-UPLOAD_STATE="$SCRIPT_DIR/.upload-state.tsv"
+UPLOAD_STATE="$LOG_DIR/${LOG_DATE}-upload-state.tsv"
 MAX_DAILY_UPLOADS="${YT_DAILY_LIMIT:-6}"
 QUOTA_EXCEEDED=false
 touch "$UPLOAD_STATE"
@@ -60,12 +62,18 @@ CONVERT_ONLY=false
 [[ "${1:-}" == "--upload-only" ]] && UPLOAD_ONLY=true
 [[ "${1:-}" == "--convert-only" ]] && CONVERT_ONLY=true
 
-# --- Logging (rawlogs/YYYY-MM-DD-youtuber.md) ---
+# --- Logging (logs/YYYY-MM-DD-process.md) ---
 {
   echo "## Run: $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M:%S %Z')"
   echo ""
 } >> "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+STATUS_FILE="$LOG_DIR/${LOG_DATE}-process.status"
+PROGRESS_FILE="$LOG_DIR/${LOG_DATE}-process.progress"
+PIDFILE="$LOG_DIR/${LOG_DATE}-process.pid"
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
 
 echo "starting | $(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M %Z') | pid: $$" > "$STATUS_FILE"
 
@@ -104,11 +112,18 @@ time_of_day() {
 
 get_epoch() {
   local input_file="$1"
-  local ts=$(ffprobe -v quiet -show_entries format_tags=creation_time \
+  local ts
+  ts=$(ffprobe -v quiet -show_entries format_tags=creation_time \
     -of csv=p=0 "$input_file" 2>/dev/null | head -1)
   if [[ -z "$ts" ]]; then echo ""; return; fi
-  local clean=$(echo "$ts" | sed 's/\.[0-9]*Z$//' | sed 's/Z$//')
+  local clean
+  clean=$(echo "$ts" | sed 's/\.[0-9]*Z$//' | sed 's/Z$//')
   date -j -u -f "%Y-%m-%dT%H:%M:%S" "$clean" +%s 2>/dev/null || echo ""
+}
+
+log_rename() {
+  local src="$1" dest="$2"
+  printf '%s\t%s\t%s\n' "$(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M:%S %Z')" "$src" "$dest" >> "$RENAME_LEDGER"
 }
 
 move_to_trash() {
@@ -387,6 +402,7 @@ for i in "${!FILE_LIST[@]}"; do
     else
       echo "  [teaching] 10psm Mon/Wed/Fri ~6am → creating SST $(basename "$teaching_sst_out")"
       cp "$sst_out" "$teaching_sst_out"
+      log_rename "$sst_out" "$teaching_sst_out"
     fi
 
     if [[ -f "$teaching_yt_out" ]]; then
@@ -394,6 +410,7 @@ for i in "${!FILE_LIST[@]}"; do
     else
       echo "  [teaching] 10psm Mon/Wed/Fri ~6am → creating YT $(basename "$teaching_yt_out")"
       cp "$yt_out" "$teaching_yt_out"
+      log_rename "$yt_out" "$teaching_yt_out"
     fi
   else
     echo "  [teaching] No teaching copy ($(day_name "$dow"), ${hour}:${minute}, loc=${loc})"
@@ -404,8 +421,13 @@ for i in "${!FILE_LIST[@]}"; do
   if [[ -f "$sst_out" && -f "$yt_out" ]]; then
     echo "  [cleanup] Conversions confirmed — trashing source, archiving sstready"
     move_to_trash "$input_file"
+    log_rename "$input_file" "$TRASH/$(basename "$input_file")"
     mv "$sst_out" "$SST_UNCOPIED/"
-    [[ -n "$teaching_sst_out" && -f "$teaching_sst_out" ]] && mv "$teaching_sst_out" "$SST_UNCOPIED/"
+    log_rename "$sst_out" "$SST_UNCOPIED/$(basename "$sst_out")"
+    if [[ -n "$teaching_sst_out" && -f "$teaching_sst_out" ]]; then
+      mv "$teaching_sst_out" "$SST_UNCOPIED/"
+      log_rename "$teaching_sst_out" "$SST_UNCOPIED/$(basename "$teaching_sst_out")"
+    fi
   else
     echo "  [cleanup] WARNING: conversion output missing — skipping source cleanup"
   fi
@@ -445,6 +467,7 @@ for i in "${!FILE_LIST[@]}"; do
   # --- Move uploaded rolling ytready to macOS Trash ---
   echo "  [trash] Moving uploaded ytready to .trash/"
   move_to_trash "$yt_out"
+  log_rename "$yt_out" "$TRASH/$(basename "$yt_out")"
 
   # --- Upload teaching video if created ---
   if [[ -n "$teaching_yt_out" && -f "$teaching_yt_out" ]]; then
@@ -457,6 +480,7 @@ for i in "${!FILE_LIST[@]}"; do
     elif [[ $upload_exit -eq 0 ]]; then
       echo "  [trash] Moving uploaded teaching ytready to .trash/"
       move_to_trash "$teaching_yt_out"
+      log_rename "$teaching_yt_out" "$TRASH/$(basename "$teaching_yt_out")"
     fi
   fi
 
