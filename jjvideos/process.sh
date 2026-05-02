@@ -26,6 +26,9 @@ fi
 #   6. After both conversions confirmed: move original → macOS Trash, sstready → sstready/.uncopied/
 #   7. After confirmed upload: move ytready artifact → macOS Trash
 #
+# Secondary input:
+# - 10psj-teaching/ → teaching-class-fc outputs into ytready/ and sst7/.uncopied/
+#
 # Rules:
 # - 10psj morning classes are never teaching videos.
 # - Root jjvideos/ files are 10p fallback and have no playlist.
@@ -43,12 +46,14 @@ SSTREADY="$SCRIPT_DIR/sstready"
 SST_UNCOPIED="$SSTREADY/.uncopied"
 YTREADY="$SCRIPT_DIR/ytready"
 TRASH="$SCRIPT_DIR/.trash"
+SST7="$SCRIPT_DIR/sst7"
+SST7_UNCOPIED="$SST7/.uncopied"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/${LOG_DATE}-process.md"
 RENAME_LEDGER="$LOG_DIR/${LOG_DATE}-renames.tsv"
 
-mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
+mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$SST7" "$SST7_UNCOPIED" "$LOG_DIR"
 touch "$RENAME_LEDGER"
 
 # --- Upload state: daily quota management ---
@@ -61,6 +66,8 @@ UPLOAD_ONLY=false
 CONVERT_ONLY=false
 [[ "${1:-}" == "--upload-only" ]] && UPLOAD_ONLY=true
 [[ "${1:-}" == "--convert-only" ]] && CONVERT_ONLY=true
+[[ "${1:-}" == "--teaching-only" ]] && TEACHING_ONLY=true
+TEACHING_ONLY=${TEACHING_ONLY:-false}
 
 # --- Logging (logs/YYYY-MM-DD-process.md) ---
 {
@@ -170,6 +177,61 @@ yt_upload() {
   "description": "",
   "selfDeclaredMadeForKids": false
 }
+
+process_teaching_folder() {
+  echo "=== Teaching folder mode ==="
+  shopt -s nullglob
+  local files=("$SCRIPT_DIR/10psj-teaching"/*.MOV "$SCRIPT_DIR/10psj-teaching"/*.mov)
+  shopt -u nullglob
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No teaching files found in 10psj-teaching/."
+    return 0
+  fi
+
+  for f in "${files[@]}"; do
+    local input_file="$f"
+    local filename canonical_base sst_out yt_out ep datestamp
+    filename=$(basename "$input_file")
+    ep=$(get_epoch "$input_file")
+    [[ -z "$ep" ]] && { echo "WARN: No creation_time for $filename, skipping."; continue; }
+
+    datestamp=$(TZ="America/Los_Angeles" date -r "$ep" +%Y%m%d)
+    canonical_base="${datestamp}-teaching-class-fc"
+    sst_out="$SST7/${canonical_base}.mov"
+    yt_out="$YTREADY/${canonical_base}-ytready.mov"
+
+    echo "=== Teaching Processing: $filename ==="
+
+    if [[ -f "$sst_out" ]]; then
+      echo "  [sst7] Already exists, skipping."
+    else
+      echo "  [sst7] Compressing with audio..."
+      ffmpeg -y -loglevel error -hide_banner -nostats -i "$input_file" \
+        -c:v libx264 -profile:v high -level 4.1 -preset veryfast -crf 23 \
+        -vf "scale=1280:720,fps=30" \
+        -b:v 8083k \
+        -c:a aac -b:a 191k -ar 44100 \
+        -movflags +faststart \
+        "$sst_out"
+      log_rename "$input_file" "$sst_out"
+    fi
+
+    if [[ -f "$yt_out" ]]; then
+      echo "  [ytready] Already exists, skipping."
+    elif [[ -f "$sst_out" ]]; then
+      echo "  [ytready] Copying audio archive to ytready naming..."
+      cp "$sst_out" "$yt_out"
+      log_rename "$sst_out" "$yt_out"
+    fi
+
+    if [[ -f "$sst_out" ]]; then
+      mv "$sst_out" "$SST7_UNCOPIED/"
+      log_rename "$sst_out" "$SST7_UNCOPIED/$(basename "$sst_out")"
+    fi
+  done
+  echo "=== Teaching folder done ==="
+}
 EOF
 
   local playlist_flag=""
@@ -244,6 +306,11 @@ if $UPLOAD_ONLY; then
     echo ""
   done
   echo "=== Upload-only done ==="
+  exit 0
+fi
+
+if $TEACHING_ONLY; then
+  process_teaching_folder
   exit 0
 fi
 
