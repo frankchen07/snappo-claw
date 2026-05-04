@@ -24,3 +24,4 @@ Current odometer: 150,211
 - Plan data: `workspace/mechanic/data/maintenance-plan.csv`
 - Generator: `workspace/mechanic/scripts/next_services.py`
 - Full schedule: `workspace/mechanic/processed/mechanic-schedule-v2-2026-03-23.md`
+- 2026-05-03 17:30 PDT, P0301 cylinder 1 misfire again, log for follow-up; previous logged occurrence: 2026-03-23 16:00, low-RPM/low-speed, currently running fine.
