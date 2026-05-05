@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 21, in <module>
-  File "<stdin>", line 15, in tod
-TypeError: '<=' not supported between instances of 'int' and 'str'
