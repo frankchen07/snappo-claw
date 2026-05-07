@@ -1,4 +1,4 @@
-## Todo
+## todo
 - [x] use case: straight up assistant
     - [x] connect gmail and calendar
 	- [x] created oauth client profile
