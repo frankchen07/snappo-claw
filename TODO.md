@@ -1,0 +1,18 @@
+## Todo
+- [x] use case: straight up assistant
+    - [x] connect gmail and calendar
+	- [x] created oauth client profile
+	- [x] added snappo as test user
+	- [x] shared calendar
+	- [x] installed gogcli, automatic activation for openclaw
+	- [x] use a higher powered model for tool access
+- [x] use case: ai mechanic
+    - [x] upload manual
+    - [x] upload costs & receipts
+- [x] use case: youtuber uploader
+    - [x] conversion and rename
+    - [x] connect to youtube api and upload fttjj footage
+    - [x] edge cases
+    - [ ] cron jobs for connection and airdrop?
+    - [ ] upload every 6 hours
+    - [ ] how to deal with human intervention on location
