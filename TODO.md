@@ -16,3 +16,93 @@
     - [ ] cron jobs for connection and airdrop?
     - [ ] upload every 6 hours
     - [ ] how to deal with human intervention on location
+
+## openclaw setup checklist
+- [x] remote setup
+    - [x] snappo ports defined in ssh configs
+    - [x] tailscale changes the ips, connect mac mini & mbp
+    - [x] snappo vnc uses snappo tunnel
+    - [x] setup aliases in .zshrc
+- [x] connect telegram
+    - [x] pairing directly with user id
+    - [x] might have to do open first
+- [x] models
+    - [x] connect new model
+    - [x] connect chat gpt codex trial oauth
+        - [x] openclaw models auth —help
+        - [x] oc models set openai-codex/gpt-5.4-mini 
+        - [x] oc models set openrouter/deepseek/deepseek-v3.2
+        - [x] also change youtuber and mechanic agents
+    - [x] connect anthropic oauth
+        - [x] `openclaw models auth paste-token --provider anthropic`
+        - [x] opus 4.6, then sonnet, then haiku
+    - [x] connect anthropic api credits key
+    - [x] set primary apis and primary models priorities
+    - [x] ask snappo to switch models for specific types of work
+    - [x] run local models for more basic work
+        - [x] ollama connection
+        - [x] local models suck, maybe just use 9b for notes dump, haiku or some shit to summarize and distill
+    - [x] create proxy routing system
+- [x] git workspace
+    - [x] set up gitignore
+    - [x] set up write only deploy key on private repo snappo
+- [x] secrets mgmt
+    - [x] auth_profiles.json
+        - [x] openaicodex auth
+    - [x] .env
+        - [x] gateway
+        - [x] telegram
+        - [x] anthropic auth
+        - [x] anthropic api
+        - [x] tavily
+    - [x] gogcli
+        - [x] calendar
+        - [x] youtube
+    - [x] jjvideos
+        - [x] client_secrets.json
+        - [x] request.token
+- [x] personality setup 
+    - [x] soul.md
+    - [x] identity.md
+    - [x] user.md
+    - [x] heartbeat.md
+        - [x] turn off if you don’t want to burn tokens
+        - [x] dailylogs only when prompted
+- [x] memory
+    - [x] https://gist.github.com/digitalknk/ec360aab27ca47cb4106a183b2c25a98 
+    - [x] making memory explicit, where did folder memory come from?
+        - [x] agent -> memory (separate out by agent, and shared, all in memory/) AGENT.md
+        - [x] memory.md long term memory
+        - [x] mem short-term memory
+        - [x] rawlogs for everything else to be distilled
+        - [x] https://github.com/Atlas-Cowork/openclaw-reference-setup
+        - [x] qmd
+    - [x] making memory explicit
+        - [x] memorysearch
+        - [x] contextpruning
+        - [x] compaction
+    - [x] heartbeat.md vs memory
+        - [x] daily logs, not in memory
+        - [x] CRONS.md for distiller agent, ollama, and cron job commands
+            - [x] cron for memory (ollama)
+- [x] agents
+    - [x] main agent
+        - [ ] recombine all agents to just one
+    - [x] youtuber agent
+    - [x] mechanic agent
+- [x] skills
+    - [x] find-skills
+    - [x] tavily
+    - [x] proactive agent lite
+- [x] dmscope system configurations
+    - [x] session scopes merging identities issue
+    - [x] https://www.heyuan110.com/posts/ai/2026-02-14-openclaw-automation-pitfalls/ 
+    - [x] maxconcurrent agents
+    - [x] https://gist.github.com/digitalknk/ec360aab27ca47cb4106a183b2c25a98 
+    - [x] subagents
+        - [x] set max concurrent
+        - [x] set model
+- [ ] voice
+    - [ ] elevenlabs
+- [ ] obsidian setup
+    - [ ] syncthing
