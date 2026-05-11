@@ -11,3 +11,6 @@ agents/youtuber.md
 rawlogs/
 mem/
 memory/
+crypto/.venv/
+crypto/logs/
+crypto/cache/

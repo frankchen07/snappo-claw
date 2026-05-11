@@ -1,0 +1,10 @@
+{
+  "id": "crypto",
+  "name": "crypto",
+  "workspace": "/Users/snappo/.openclaw/workspace",
+  "model": {
+    "primary": "openai-codex/gpt-5.4-mini",
+    "fallbacks": []
+  },
+  "promptPath": "workspace/agents/crypto.md"
+}
