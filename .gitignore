@@ -14,3 +14,4 @@ memory/
 crypto/.venv/
 crypto/logs/
 crypto/cache/
+crypto/knowledge/
