@@ -1,17 +1,30 @@
+# ignore dust
 .DS_Store
+
+# ignore creds
 .env
+
+# ignore youtuber project
 jjvideos/
 !jjvideos/process.sh
-mechanic/inbox/*.pdf
+agents/youtuber.md
 client_secrets.json
 request.token
-USER.md
-speck/
-agents/youtuber.md
-rawlogs/
-mem/
-memory/
+
+# ignore mechanic project
+mechanic/inbox/*.pdf
+
+# ignore crypto project
 crypto/.venv/
 crypto/logs/
 crypto/cache/
 crypto/knowledge/
+
+# ignore sensitive data
+USER.md
+speck/
+
+# ignore logs
+rawlogs/
+mem/
+memory/
