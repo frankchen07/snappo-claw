@@ -61,6 +61,22 @@ openclaw cron add \
 --session isolated \
 --announce \
 --message 'Scan workspace/mem/*.md for the last unread markdown files (last 4 if monday, last 3 if thursday). Extract persistent facts, priorities, knowledge and append the top 20 bullets, dated, to MEMORY.md. Prune duplicates or outdated information. Cross-ref with mem/ and rawlogs/ if there are gaps. Commit and push to git.'
+
+openclaw cron add \
+--name crypto-morning \
+--cron "0 16 * * *" \
+--agent crypto \
+--session isolated \
+--announce \
+--message 'Run scan_watchlist for BTC, ETH, STX, ALEO. For each coin output: trend direction + strength, setup type + quality, confidence score, entry zone, stop level with reason, R:R. Flag any coin with confidence >= 50 as actionable. End with "Not financial advice."'
+
+openclaw cron add \
+--name crypto-evening \
+--cron "0 4 * * *" \
+--agent crypto \
+--session isolated \
+--announce \
+--message 'Run scan_watchlist for BTC, ETH, STX, ALEO. For each coin output: trend direction + strength, setup type + quality, confidence score, entry zone, stop level with reason, R:R. Flag any coin with confidence >= 50 as actionable. End with "Not financial advice."'
 ```
  
 

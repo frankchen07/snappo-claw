@@ -3,7 +3,7 @@
   "name": "crypto",
   "workspace": "/Users/snappo/.openclaw/workspace",
   "model": {
-    "primary": "openai-codex/gpt-5.4-mini",
+    "primary": "ollama/qwen3:8b",
     "fallbacks": []
   },
   "promptPath": "workspace/agents/crypto.md"

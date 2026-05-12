@@ -30,6 +30,8 @@ SYMBOL_MAP = {
     "SUI": "sui",
     "ARB": "arbitrum",
     "OP": "optimism",
+    "STX": "blockstack",
+    "ALEO": "aleo",
 }
 
 BASE_URL = "https://api.coingecko.com/api/v3"
