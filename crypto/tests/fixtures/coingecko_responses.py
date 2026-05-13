@@ -50,6 +50,22 @@ def make_downtrend_price_history(days: int = 365) -> dict:
     return {"prices": prices, "total_volumes": volumes}
 
 
+def make_ohlc_30d(close_start: float = 50000.0) -> list[list]:
+    """30 days of synthetic OHLC candles [[ts, open, high, low, close], ...]."""
+    now = int(time.time() * 1000)
+    ms_per_4h = 4 * 3600 * 1000  # CoinGecko returns 4h candles for 30-day window
+    price = close_start
+    candles = []
+    for i in range(180, 0, -1):  # ~30 days * 6 candles/day
+        ts = now - i * ms_per_4h
+        open_ = price
+        price = price * (1 + 0.001 + (i % 7 - 3) * 0.001)
+        high = max(open_, price) * 1.005
+        low = min(open_, price) * 0.995
+        candles.append([ts, round(open_, 2), round(high, 2), round(low, 2), round(price, 2)])
+    return candles
+
+
 COIN_DETAILS_BTC = {
     "id": "bitcoin",
     "symbol": "btc",

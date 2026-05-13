@@ -13,9 +13,15 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from crypto.src.cache import FileCache
 from crypto.src.fetch import CoinGeckoClient
-from crypto.src.analysis import TrendAnalyzer, SetupDetector, VolumeAnalyzer, CANSLIMEvaluator
+from crypto.src.analysis import TrendAnalyzer, SetupDetector, VolumeAnalyzer, CANSLIMEvaluator, RangeAnalyzer
+from crypto.src.stage_detector import StageClassifier
+from crypto.src.narrative import ExpectationsNarrative
 from crypto.src.ingest import DocumentIngester, FrameworkIndex
-from crypto.src.models import AnalysisOutput, MarketTrend, SetupInfo
+from crypto.src.models import (
+    AnalysisOutput, MarketTrend, SetupInfo,
+    EcologicalFramework, PriceStructure, RangeMetrics, PatternInfo, StageInfo,
+)
+from crypto.src.chart import ChartGenerator
 from crypto.src.format import to_dict
 
 _WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # workspace/
@@ -72,11 +78,13 @@ def _compute_entry_stop_targets(prices: list[float]) -> tuple[dict, dict, list[d
     return entry_zone, stop_level, targets
 
 
+
 def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
     """Analyze a single coin using Minervini + CANSLIM methodology."""
     t0 = time.time()
     cache = _cache()
     client = _client(cache)
+    data_notes: list[str] = []
 
     history = client.get_market_chart(symbol, days=365)
     details = client.get_coin_details(symbol)
@@ -84,16 +92,101 @@ def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
     prices = [row["price"] for row in history]
     volumes = [row["volume"] for row in history]
 
+    # OHLC for range analysis / support-resistance
+    try:
+        ohlc = client.get_ohlc_30d(symbol)
+    except Exception as e:
+        ohlc = []
+        data_notes.append(f"OHLC unavailable ({e.__class__.__name__}) — range metrics skipped")
+
+    # BTC prices for RS line baseline
+    is_btc = symbol.upper() in ("BTC", "BITCOIN")
+    if is_btc:
+        btc_prices = prices
+    else:
+        try:
+            btc_history = client.get_market_chart("BTC", days=365)
+            btc_prices = [row["price"] for row in btc_history]
+        except Exception as e:
+            btc_prices = prices  # fallback: RS will be flat
+            data_notes.append(f"BTC RS baseline unavailable — RS line flattened")
+
     ta = TrendAnalyzer()
     sd = SetupDetector()
     va = VolumeAnalyzer()
     ev = CANSLIMEvaluator()
+    ra = RangeAnalyzer()
+    sc = StageClassifier()
+    en = ExpectationsNarrative()
 
     trend = ta.detect_trend(prices)
     setup = sd.classify(prices, volumes)
     canslim = ev.score(details, prices, volumes)
+    mas = ta.moving_averages(prices)
     avg_vol = va.average_volume(volumes)
     current = prices[-1]
+
+    # RS line
+    if is_btc:
+        rs = {"value": 1.0, "interpretation": "neutral", "trend": "flat", "ratios": [1.0] * min(90, len(prices))}
+    else:
+        rs = ta.rs_line(prices, btc_prices)
+
+    # Support/resistance
+    sr = ta.detect_support_resistance(ohlc, current) if ohlc else {"support": [], "resistance": []}
+
+    # Range metrics
+    if ohlc:
+        cr = ra.analyze_closing_range(ohlc)
+        closing_range_pct = cr["average_closing_range_pct"]
+        closing_range_class = cr["classification"]
+    else:
+        closing_range_pct = None
+        closing_range_class = "balanced"
+
+    atr = ra.atr_trend(prices)
+    stage_result = sc.classify_stage(prices, volumes, mas)
+
+    # Narrative
+    expectations = en.generate(
+        stage=stage_result["stage"],
+        stage_label=stage_result["label"],
+        setup_type=setup["type"],
+        rs_interpretation=rs["interpretation"],
+        closing_range_class=closing_range_class,
+        atr_trend=atr["trend"],
+        support_levels=sr["support"],
+        resistance_levels=sr["resistance"],
+    )
+
+    eco = EcologicalFramework(
+        price_structure=PriceStructure(
+            ma10=mas.get("ma10"),
+            ma50=mas.get("ma50"),
+            ma150=mas.get("ma150"),
+            ma200=mas.get("ma200"),
+            rs_value=rs["value"],
+            rs_interpretation=rs["interpretation"],
+            rs_trend=rs["trend"],
+            support=sr["support"],
+            resistance=sr["resistance"],
+        ),
+        range_metrics=RangeMetrics(
+            closing_range_pct=closing_range_pct,
+            closing_range_class=closing_range_class,
+            atr_trend=atr["trend"],
+            recent_atr=atr["recent_atr"],
+            prior_atr=atr["prior_atr"],
+        ),
+        pattern=PatternInfo(primary=setup["type"], quality=setup["quality"]),
+        stage=StageInfo(
+            stage=stage_result["stage"],
+            label=stage_result["label"],
+            confidence=stage_result["confidence"],
+        ),
+        expectations=expectations,
+        data_notes=data_notes,
+    )
 
     confidence = int(min(100, canslim))
     entry_zone, stop_level, targets = _compute_entry_stop_targets(prices)
@@ -103,6 +196,8 @@ def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
     key_signals = [
         f"Trend: {trend['direction']} ({trend['strength']}, {trend['criteria_met']}/8 criteria)",
         f"Setup: {setup['type']} (quality {setup['quality']}/10)",
+        f"Stage: {stage_result['stage']} {stage_result['label']} (confidence {stage_result['confidence']}%)",
+        f"RS vs BTC: {rs['value']} ({rs['interpretation']}, {rs['trend']})",
         f"Volume: {volumes[-1]:,.0f} vs avg {avg_vol:,.0f}",
         f"CANSLIM score: {canslim:.0f}/100",
     ]
@@ -119,11 +214,13 @@ def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
         key_signals=key_signals,
         risk_reward=round(rr, 2),
         disclaimer="Not financial advice.",
+        ecological_framework=eco,
     )
 
     result = to_dict(output)
     elapsed = round((time.time() - t0) * 1000)
-    _log("analyze_coin", symbol=symbol, elapsed_ms=elapsed, confidence=confidence)
+    _log("analyze_coin", symbol=symbol, elapsed_ms=elapsed, confidence=confidence,
+         stage=stage_result["stage"], rs=rs["value"])
     return result
 
 
@@ -137,6 +234,59 @@ def scan_watchlist(symbols: list[str]) -> list[dict]:
             _log("scan_watchlist", symbol=sym, status="error", error=str(e))
             results.append({"symbol": sym, "error": str(e)})
     return results
+
+
+def generate_chart(symbol: str) -> str:
+    """Generate a 3-panel PNG chart and return the file path."""
+    cache = _cache()
+    client = _client(cache)
+    data_notes: list[str] = []
+
+    history = client.get_market_chart(symbol, days=365)
+    prices = [row["price"] for row in history]
+    volumes = [row["volume"] for row in history]
+
+    is_btc = symbol.upper() in ("BTC", "BITCOIN")
+    if is_btc:
+        btc_prices = prices
+    else:
+        try:
+            btc_history = client.get_market_chart("BTC", days=365)
+            btc_prices = [row["price"] for row in btc_history]
+        except Exception:
+            btc_prices = prices
+
+    ta = TrendAnalyzer()
+    mas = ta.moving_averages(prices)
+
+    if is_btc:
+        rs_ratios: list[float] = []
+    else:
+        rs = ta.rs_line(prices, btc_prices)
+        rs_ratios = rs.get("ratios", [])
+
+    try:
+        ohlc = client.get_ohlc_30d(symbol)
+    except Exception:
+        ohlc = []
+
+    sr = ta.detect_support_resistance(ohlc, prices[-1]) if ohlc else {"support": [], "resistance": []}
+
+    sc = StageClassifier()
+    stage_result = sc.classify_stage(prices, volumes, mas)
+
+    cg = ChartGenerator()
+    return cg.generate(
+        symbol=symbol,
+        prices=prices,
+        volumes=volumes,
+        moving_averages=mas,
+        rs_line_values=rs_ratios,
+        stage=stage_result["stage"],
+        stage_label=stage_result["label"],
+        support=sr["support"],
+        resistance=sr["resistance"],
+    )
 
 
 def search_knowledge(query: str, limit: int = 5) -> list[dict]:

@@ -40,6 +40,7 @@ BASE_URL = "https://api.coingecko.com/api/v3"
 TTL_MARKET_CHART = 6 * 3600   # 6 hours
 TTL_MARKETS = 3600             # 1 hour
 TTL_COIN_DETAILS = 24 * 3600  # 24 hours
+TTL_OHLC = 6 * 3600           # 6 hours
 
 
 class TokenBucket:
@@ -159,4 +160,32 @@ class CoinGeckoClient:
             if cached:
                 data, _ = cached
                 return data
+            raise
+
+    def get_ohlc_30d(self, symbol: str) -> list[dict]:
+        """Fetch 30-day OHLC candles. CoinGecko returns [[ts, open, high, low, close], ...]."""
+        coin_id = self._symbol_to_id(symbol)
+        cache_key = f"ohlc_30d:{coin_id}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            data, is_fresh = cached
+            if is_fresh:
+                return data
+
+        try:
+            url = f"{BASE_URL}/coins/{coin_id}/ohlc"
+            raw = self._get(url, params={"vs_currency": "usd", "days": 30})
+            result = [
+                {"timestamp": row[0], "open": row[1], "high": row[2], "low": row[3], "close": row[4]}
+                for row in raw
+                if len(row) >= 5
+            ]
+            self.cache.set(cache_key, result, ttl_seconds=TTL_OHLC)
+            return result
+        except Exception as e:
+            if cached:
+                logger.warning(f"OHLC API error for {symbol}, returning stale cache: {e}")
+                data, _ = cached
+                return data
+            logger.error(f"OHLC API error for {symbol} and no cache: {e}")
             raise

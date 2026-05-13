@@ -8,6 +8,7 @@ from tests.fixtures.coingecko_responses import (
     COIN_DETAILS_BTC,
     MARKETS_RESPONSE,
     make_uptrend_price_history,
+    make_ohlc_30d,
 )
 
 
@@ -26,12 +27,16 @@ def _mock_coingecko(tmp_dirs):
     """Patch CoinGecko calls with test data."""
     history = make_uptrend_price_history(365)
 
+    ohlc = make_ohlc_30d()
+
     def fake_get(url, *args, **kwargs):
         m = MagicMock()
         m.status_code = 200
         m.raise_for_status = lambda: None
         if "market_chart" in url:
             m.json.return_value = history
+        elif "/ohlc" in url:
+            m.json.return_value = ohlc
         elif "markets" in url:
             m.json.return_value = MARKETS_RESPONSE
         else:
@@ -103,3 +108,10 @@ def test_analyze_coin_cli_function(tmp_crypto_dirs):
     assert "setup" in result
     assert "confidence_score" in result
     assert result["disclaimer"] == "Not financial advice."
+
+    eco = result.get("ecological_framework")
+    assert eco is not None, "ecological_framework must be present"
+    assert eco["stage"]["stage"] in (1, 2, 3, 4)
+    assert eco["stage"]["label"] in ("Consolidation", "Advancing", "Distribution", "Decline")
+    assert isinstance(eco["expectations"], str) and len(eco["expectations"]) > 10
+    assert eco["price_structure"]["rs_value"] == 1.0  # BTC vs BTC is always 1.0
