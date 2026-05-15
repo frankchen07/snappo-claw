@@ -1,0 +1,10 @@
+{
+  "id": "travel",
+  "name": "travel",
+  "workspace": "/Users/snappo/.openclaw/workspace",
+  "model": {
+    "primary": "openai-codex/gpt-5.4-mini",
+    "fallbacks": []
+  },
+  "promptPath": "workspace/agents/travel.md"
+}

@@ -1,0 +1,20 @@
+{
+  "eiffel tower|paris": {
+    "place": {
+      "name": "Eiffel Tower",
+      "address": "Av. Gustave Eiffel, 75007 Paris, France",
+      "lat": 48.858370099999995,
+      "lng": 2.2944812999999997,
+      "place_id": "ChIJLU7jZClu5kcR4PcOOO6p3I0",
+      "types": [
+        "historical_landmark",
+        "monument",
+        "historical_place",
+        "tourist_attraction",
+        "point_of_interest",
+        "establishment"
+      ]
+    },
+    "ts": 1778729451.164368
+  }
+}
