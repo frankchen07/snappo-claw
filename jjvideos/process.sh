@@ -27,7 +27,7 @@ fi
 #   7. After confirmed upload: move ytready artifact → macOS Trash
 #
 # Secondary input:
-# - 10psj-teaching/ → teaching-class-fc outputs into ytready/ and sst7/.uncopied/
+# - 10psj-teaching/ → teaching-class-fc outputs into ytready/ and sstready/.uncopied/
 #
 # Rules:
 # - 10psj morning classes are never teaching videos.
@@ -46,14 +46,12 @@ SSTREADY="$SCRIPT_DIR/sstready"
 SST_UNCOPIED="$SSTREADY/.uncopied"
 YTREADY="$SCRIPT_DIR/ytready"
 TRASH="$SCRIPT_DIR/.trash"
-SST7="$SCRIPT_DIR/sst7"
-SST7_UNCOPIED="$SST7/.uncopied"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_DATE=$(TZ="America/Los_Angeles" date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/${LOG_DATE}-process.md"
 RENAME_LEDGER="$LOG_DIR/${LOG_DATE}-renames.tsv"
 
-mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$SST7" "$SST7_UNCOPIED" "$LOG_DIR"
+mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
 touch "$RENAME_LEDGER"
 
 # --- Upload state: daily quota management ---
@@ -203,15 +201,15 @@ process_teaching_folder() {
     session_num=$(( session_num + 1 ))
 
     canonical_base="${datestamp}-teaching-class-fc-${session_num}"
-    sst_out="$SST7/${canonical_base}.mov"
+    sst_out="$SSTREADY/${canonical_base}.mov"
     yt_out="$YTREADY/${canonical_base}-ytready.mov"
 
     echo "=== Teaching Processing: $filename (session ${session_num}) ==="
 
     if [[ -f "$sst_out" ]]; then
-      echo "  [sst7] Already exists, skipping."
+      echo "  [sstready] Already exists, skipping."
     else
-      echo "  [sst7] Compressing with audio..."
+      echo "  [sstready] Compressing with audio..."
       ffmpeg -y -loglevel error -hide_banner -nostats -i "$input_file" \
         -c:v libx264 -profile:v high -level 4.1 -preset veryfast -crf 23 \
         -vf "scale=1280:720,fps=30" \
@@ -234,10 +232,10 @@ process_teaching_folder() {
       echo "  [verify] Checking teaching outputs..."
       local verify_ok=true
       if ! verify_output "$sst_out" "yes"; then
-        echo "  [verify] FAIL: sst7 output corrupt or missing audio — skipping cleanup"
+        echo "  [verify] FAIL: sstready output corrupt or missing audio — skipping cleanup"
         verify_ok=false
       else
-        echo "  [verify] OK: sst7 has audio"
+        echo "  [verify] OK: sstready has audio"
       fi
       if ! verify_output "$yt_out" "yes"; then
         echo "  [verify] FAIL: ytready output corrupt or missing audio — skipping cleanup"
@@ -246,12 +244,12 @@ process_teaching_folder() {
         echo "  [verify] OK: ytready has audio"
       fi
       if $verify_ok; then
-        echo "  [cleanup] Verified — trashing source, archiving sst7"
+        echo "  [cleanup] Verified — trashing source, archiving sstready"
         move_to_trash "$input_file"
-        mv "$sst_out" "$SST7_UNCOPIED/"
-        log_rename "$sst_out" "$SST7_UNCOPIED/$(basename "$sst_out")"
+        mv "$sst_out" "$SST_UNCOPIED/"
+        log_rename "$sst_out" "$SST_UNCOPIED/$(basename "$sst_out")"
       else
-        echo "  [cleanup] Verification FAILED — source kept, sst7 kept for inspection"
+        echo "  [cleanup] Verification FAILED — source kept, sstready kept for inspection"
       fi
     elif [[ -f "$sst_out" ]]; then
       echo "  [warn] sst_out exists but yt_out missing — skipping cleanup"
