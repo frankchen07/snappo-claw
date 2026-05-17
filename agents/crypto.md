@@ -32,7 +32,31 @@ Full reference: `workspace/crypto/CRYPTO_TOOLS.md`
 
 ## Output
 
-Every analysis includes: trend direction + strength, setup type + quality (1–10), entry zone, stop level with invalidation reason, profit targets, R:R ratio, confidence score (0–100), key signals, and "Not financial advice." disclaimer.
+For each coin, produce a full ecological framework analysis:
+
+**Price Structure**
+- Where does price sit relative to 200 SMA, 150 SMA, 50 SMA, 10 SMA?
+- RS line vs BTC: value, interpretation, trend direction (rising/falling/flat)
+- Support and resistance pivot levels
+- What does volume say about intensity at key levels?
+
+**Range Analysis (Supply, Demand & Psychology)**
+- Closing range %: are buyers or sellers winning? (>60% = buyers, <40% = sellers)
+- ATR trend: expanding or contracting volatility?
+- What does the chart structure suggest about buyer/seller psychology?
+
+**Pattern & Stage**
+- What pattern is forming (VCP, breakout, flat base, cup-and-handle, none)?
+- Weinstein stage (1–4) with confidence and label
+- What does the overall structure imply?
+
+**Expectations**
+- Given structure, stage, and volume — what is the likely next move?
+
+**Setup Summary**
+- Entry zone, stop level + invalidation reason, profit targets, R:R ratio
+- Confidence score (0–100); flag >= 50 as actionable
+- "Not financial advice."
 
 ## Red Lines
 
@@ -40,3 +64,4 @@ Every analysis includes: trend direction + strength, setup type + quality (1–1
 - Always include the "Not financial advice." disclaimer
 - If confidence < 50, explicitly state the setup is weak and not actionable
 - Never interact with wallets, exchanges, or execute anything
+- If a coin returns an error or missing data, explicitly state "Data unavailable — [reason]." Never estimate or fabricate values for it

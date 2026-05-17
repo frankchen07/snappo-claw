@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from crypto.src.cache import FileCache
-from crypto.src.fetch import CoinGeckoClient
+from crypto.src.fetch import CoinGeckoClient, get_fallback_fetcher
 from crypto.src.analysis import TrendAnalyzer, SetupDetector, VolumeAnalyzer, CANSLIMEvaluator, RangeAnalyzer
 from crypto.src.stage_detector import StageClassifier
 from crypto.src.narrative import ExpectationsNarrative
@@ -86,8 +86,20 @@ def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
     client = _client(cache)
     data_notes: list[str] = []
 
-    history = client.get_market_chart(symbol, days=365)
-    details = client.get_coin_details(symbol)
+    try:
+        history = client.get_market_chart(symbol, days=365)
+        details = client.get_coin_details(symbol)
+    except Exception as cg_err:
+        fallback = get_fallback_fetcher(symbol)
+        if fallback is None:
+            raise
+        _log("analyze_coin", symbol=symbol, status="coingecko_fallback", reason=str(cg_err))
+        data_notes.append(f"CoinGecko unavailable — using fallback source ({cg_err.__class__.__name__})")
+        history = fallback.get_market_chart(symbol, days=365)
+        details = fallback.get_coin_details(symbol)
+        if history:
+            hist_prices = [row["price"] for row in history]
+            details.setdefault("market_data", {}).setdefault("ath", {})["usd"] = max(hist_prices)
 
     prices = [row["price"] for row in history]
     volumes = [row["volume"] for row in history]
@@ -96,8 +108,16 @@ def analyze_coin(symbol: str, confidence_threshold: int = 0) -> dict:
     try:
         ohlc = client.get_ohlc_30d(symbol)
     except Exception as e:
-        ohlc = []
-        data_notes.append(f"OHLC unavailable ({e.__class__.__name__}) — range metrics skipped")
+        fallback = get_fallback_fetcher(symbol)
+        if fallback:
+            try:
+                ohlc = fallback.get_ohlc_30d(symbol)
+            except Exception as fb_e:
+                ohlc = []
+                data_notes.append(f"OHLC unavailable ({fb_e.__class__.__name__}) — range metrics skipped")
+        else:
+            ohlc = []
+            data_notes.append(f"OHLC unavailable ({e.__class__.__name__}) — range metrics skipped")
 
     # BTC prices for RS line baseline
     is_btc = symbol.upper() in ("BTC", "BITCOIN")

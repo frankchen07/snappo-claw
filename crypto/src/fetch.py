@@ -1,4 +1,5 @@
-"""CoinGecko API client with rate limiting and cache fallback."""
+"""CoinGecko API client with rate limiting and cache fallback.
+Binance and Gate.io fallback fetchers for rate-limited coins."""
 
 import logging
 import time
@@ -9,6 +10,19 @@ import requests
 from crypto.src.cache import FileCache
 
 logger = logging.getLogger(__name__)
+
+BINANCE_SYMBOL_MAP = {
+    "STX": "STXUSDT",
+}
+
+GATEIO_SYMBOL_MAP = {
+    "ALEO": "ALEO_USDT",
+}
+
+FALLBACK_SOURCES = {
+    "STX": "binance",
+    "ALEO": "gateio",
+}
 
 SYMBOL_MAP = {
     "BTC": "bitcoin",
@@ -111,11 +125,7 @@ class CoinGeckoClient:
             self.cache.set(cache_key, result, ttl_seconds=TTL_MARKET_CHART)
             return result
         except Exception as e:
-            if cached:
-                logger.warning(f"API error for {symbol}, returning stale cache: {e}")
-                data, _ = cached
-                return data
-            logger.error(f"API error for {symbol} and no cache: {e}")
+            logger.error(f"API error for {symbol}: {e}")
             raise
 
     def get_coins_markets(self, limit: int = 250) -> list[dict]:
@@ -137,9 +147,7 @@ class CoinGeckoClient:
             self.cache.set(cache_key, result, ttl_seconds=TTL_MARKETS)
             return result
         except Exception as e:
-            if cached:
-                data, _ = cached
-                return data
+            logger.error(f"coins_markets API error: {e}")
             raise
 
     def get_coin_details(self, symbol: str) -> dict:
@@ -157,9 +165,7 @@ class CoinGeckoClient:
             self.cache.set(cache_key, result, ttl_seconds=TTL_COIN_DETAILS)
             return result
         except Exception as e:
-            if cached:
-                data, _ = cached
-                return data
+            logger.error(f"coin_details API error for {symbol}: {e}")
             raise
 
     def get_ohlc_30d(self, symbol: str) -> list[dict]:
@@ -183,9 +189,78 @@ class CoinGeckoClient:
             self.cache.set(cache_key, result, ttl_seconds=TTL_OHLC)
             return result
         except Exception as e:
-            if cached:
-                logger.warning(f"OHLC API error for {symbol}, returning stale cache: {e}")
-                data, _ = cached
-                return data
-            logger.error(f"OHLC API error for {symbol} and no cache: {e}")
+            logger.error(f"OHLC API error for {symbol}: {e}")
             raise
+
+
+class BinanceFetcher:
+    _BASE = "https://api.binance.com/api/v3"
+
+    def _get(self, url: str, params: dict | None = None) -> Any:
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_market_chart(self, symbol: str, days: int = 365) -> list[dict]:
+        ticker = BINANCE_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}USDT")
+        raw = self._get(f"{self._BASE}/klines", params={"symbol": ticker, "interval": "1d", "limit": min(days, 1000)})
+        return [{"timestamp": row[0], "price": float(row[4]), "volume": float(row[5])} for row in raw]
+
+    def get_ohlc_30d(self, symbol: str) -> list[dict]:
+        ticker = BINANCE_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}USDT")
+        raw = self._get(f"{self._BASE}/klines", params={"symbol": ticker, "interval": "4h", "limit": 180})
+        return [{"timestamp": row[0], "open": float(row[1]), "high": float(row[2]), "low": float(row[3]), "close": float(row[4])} for row in raw]
+
+    def get_coin_details(self, symbol: str) -> dict:
+        ticker = BINANCE_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}USDT")
+        raw = self._get(f"{self._BASE}/ticker/24hr", params={"symbol": ticker})
+        return {
+            "market_cap_rank": None,
+            "market_data": {
+                "ath": {"usd": float(raw.get("highPrice") or 0) or None},
+                "current_price": {"usd": float(raw.get("lastPrice") or 0)},
+                "total_volume": {"usd": float(raw.get("quoteVolume") or 0)},
+            },
+        }
+
+
+class GateioFetcher:
+    _BASE = "https://api.gateio.ws/api/v4"
+
+    def _get(self, url: str, params: dict | None = None) -> Any:
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_market_chart(self, symbol: str, days: int = 365) -> list[dict]:
+        pair = GATEIO_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}_USDT")
+        # Gate.io returns newest-first; reverse to oldest-first
+        raw = self._get(f"{self._BASE}/spot/candlesticks", params={"currency_pair": pair, "interval": "1d", "limit": min(days, 1000)})
+        return [{"timestamp": int(row[0]) * 1000, "price": float(row[2]), "volume": float(row[1])} for row in reversed(raw)]
+
+    def get_ohlc_30d(self, symbol: str) -> list[dict]:
+        pair = GATEIO_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}_USDT")
+        raw = self._get(f"{self._BASE}/spot/candlesticks", params={"currency_pair": pair, "interval": "4h", "limit": 180})
+        return [{"timestamp": int(row[0]) * 1000, "open": float(row[5]), "high": float(row[3]), "low": float(row[4]), "close": float(row[2])} for row in reversed(raw)]
+
+    def get_coin_details(self, symbol: str) -> dict:
+        pair = GATEIO_SYMBOL_MAP.get(symbol.upper(), f"{symbol.upper()}_USDT")
+        raw = self._get(f"{self._BASE}/spot/tickers", params={"currency_pair": pair})
+        ticker = raw[0] if isinstance(raw, list) and raw else {}
+        return {
+            "market_cap_rank": None,
+            "market_data": {
+                "ath": {"usd": float(ticker.get("high_24h") or 0) or None},
+                "current_price": {"usd": float(ticker.get("last") or 0)},
+                "total_volume": {"usd": float(ticker.get("quote_volume") or 0)},
+            },
+        }
+
+
+def get_fallback_fetcher(symbol: str) -> "BinanceFetcher | GateioFetcher | None":
+    source = FALLBACK_SOURCES.get(symbol.upper())
+    if source == "binance":
+        return BinanceFetcher()
+    if source == "gateio":
+        return GateioFetcher()
+    return None
