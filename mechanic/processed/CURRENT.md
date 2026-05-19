@@ -27,3 +27,7 @@ Current odometer: 150,211
 - 2026-05-03 17:30 PDT, P0301 cylinder 1 misfire again, log for follow-up; previous logged occurrence: 2026-03-23 16:00, low-RPM/low-speed, currently running fine.
 
 - 2026-05-04 09:30 PDT, P0301 cylinder 1 misfire again (logged), prior occurrence: 2026-05-03 17:30 PDT; previous before that: 2026-03-23 16:00.
+
+- 2026-05-18 08:45 PDT, P0301 cylinder 1 misfire (logged by user); engine otherwise runs fine; suspected maybe low-RPM speed bump event.
+
+- 2026-05-19 08:43 PDT, P0301 cylinder 1 misfire (logged by user); engine otherwise runs fine; suspected maybe low-RPM speed bump event.
