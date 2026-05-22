@@ -10,29 +10,30 @@ fi
 # === JJ Video Processing Pipeline ===
 #
 # Input structure:
-#   jjvideos/           ← 10p (no playlist)
-#   jjvideos/10psj/     ← 10psj (10PSJ Rolling Footage playlist, unlisted)
-#   jjvideos/10psm/     ← 10psm (10PSM Rolling Footage playlist, unlisted)
+#   jjvideos/rolling/   ← drop zone: GPS auto-detects 10psm/10psj, fallback to 10p
+#   jjvideos/teaching/  ← teaching class recordings (both outputs keep audio)
 #
-# Pipeline per file:
-#   1. Read creation_time in UTC, convert to America/Los_Angeles, then derive canonical name:
+# Rolling pipeline per file:
+#   1. GPS detection → loc (10psm, 10psj, or 10p)
+#   2. Read creation_time in UTC, convert to America/Los_Angeles, then derive canonical name:
 #      YYYYMMDD-dayofweektimeofday-LOC-rolling-footage-viewN.mov
-#   2. Compress with audio → sstready/ (archive)
-#   3. Compress without audio → ytready/ (upload)
-#   4. If 10psm + Mon/Wed/Fri + 05:45-06:30 PST → create teaching copies in both:
-#      - sstready/ as YYYYMMDD-teaching-class-fc.mov (archive)
-#      - ytready/  as YYYYMMDD-teaching-class-fc-ytready.mov (upload)
-#   5. Upload to YouTube with playlist routing
-#   6. After ALL conversions verified (non-corrupt, correct audio): source → macOS Trash, sstready → .uncopied/
-#   7. After confirmed upload: move ytready artifact → macOS Trash
+#   3. Compress with audio → sstready/ (archive)
+#   4. Strip audio → ytready/ (upload)
+#   5. If loc=10psm + Mon/Wed/Fri + 05:45-06:30 PST → also create teaching copies:
+#      - sstready/ as YYYYMMDD-teaching-class-fc-N.mov (with audio)
+#      - ytready/  as YYYYMMDD-teaching-class-fc-N-ytready.mov (with audio)
+#   6. Upload to YouTube with playlist routing
+#   7. After ALL conversions verified: source → .trash/, sstready → .uncopied/
+#   8. After confirmed upload: ytready → .trash/
 #
-# Secondary input:
-# - 10psj-teaching/ → teaching-class-fc outputs into ytready/ and sstready/.uncopied/
+# Teaching pipeline per file:
+#   1. Compress with audio → sstready/YYYYMMDD-teaching-class-fc-N.mov
+#   2. cp sstready → ytready/YYYYMMDD-teaching-class-fc-N-ytready.mov (no re-encode, keeps audio)
+#   3. Upload → public + PLAYLIST_TEACHING
 #
 # Rules:
-# - 10psj morning classes are never teaching videos.
-# - Root jjvideos/ files are 10p fallback and have no playlist.
-# - Rolling videos are unlisted + location playlist (if 10psj/10psm).
+# - Rolling videos are unlisted + location playlist (10psj or 10psm).
+# - Teaching videos are public + teaching playlist.
 # - Every rename is recorded in a dated ledger for backtracking.
 #
 # Time of day in PST/PDT local time:
@@ -53,6 +54,11 @@ RENAME_LEDGER="$LOG_DIR/${LOG_DATE}-renames.tsv"
 
 mkdir -p "$SSTREADY" "$SST_UNCOPIED" "$YTREADY" "$TRASH" "$LOG_DIR"
 touch "$RENAME_LEDGER"
+
+# Gym coordinates for GPS auto-detection (plus codes: HM8R+M2 SanMateo, 9473+Q4 SanJose)
+GPS_10PSM_LAT=37.5666; GPS_10PSM_LON=-122.3102
+GPS_10PSJ_LAT=37.3644; GPS_10PSJ_LON=-121.8973
+GPS_RADIUS_KM=1.0
 
 # --- Upload state: daily quota management ---
 UPLOAD_STATE="$LOG_DIR/${LOG_DATE}-upload-state.tsv"
@@ -112,6 +118,39 @@ get_epoch() {
   date -j -u -f "%Y-%m-%dT%H:%M:%S" "$clean" +%s 2>/dev/null || echo ""
 }
 
+get_gps_loc() {
+  local input_file="$1"
+  local raw
+  raw=$(ffprobe -v quiet -show_entries "format_tags=com.apple.quicktime.location.ISO6709" \
+    -of csv=p=0 "$input_file" 2>/dev/null | head -1)
+  [[ -z "$raw" ]] && echo "" && return
+
+  # Parse ISO 6709: +37.5666-122.3102+003.145/ → lat, lon
+  local lat lon
+  lat=$(echo "$raw" | grep -oE '^[+-][0-9]+\.[0-9]+')
+  lon=$(echo "$raw" | grep -oE '[+-][0-9]+\.[0-9]+' | sed -n '2p')
+  [[ -z "$lat" || -z "$lon" ]] && echo "" && return
+
+  # Haversine distance in awk — returns closest gym within GPS_RADIUS_KM, or empty
+  awk -v lat="$lat" -v lon="$lon" \
+    -v lat_m="$GPS_10PSM_LAT" -v lon_m="$GPS_10PSM_LON" \
+    -v lat_j="$GPS_10PSJ_LAT" -v lon_j="$GPS_10PSJ_LON" \
+    -v r="$GPS_RADIUS_KM" \
+    'function hav(la1,lo1,la2,lo2,   R,pi,dlat,dlon,a,c) {
+       R=6371; pi=3.14159265358979
+       dlat=(la2-la1)*pi/180; dlon=(lo2-lo1)*pi/180
+       a=sin(dlat/2)^2+cos(la1*pi/180)*cos(la2*pi/180)*sin(dlon/2)^2
+       c=2*atan2(sqrt(a),sqrt(1-a)); return R*c
+     }
+     BEGIN {
+       dm=hav(lat,lon,lat_m,lon_m)
+       dj=hav(lat,lon,lat_j,lon_j)
+       if (dm<=r) print "10psm"
+       else if (dj<=r) print "10psj"
+       else print ""
+     }'
+}
+
 log_rename() {
   local src="$1" dest="$2"
   printf '%s\t%s\t%s\n' "$(TZ=\"America/Los_Angeles\" date '+%Y-%m-%d %H:%M:%S %Z')" "$src" "$dest" >> "$RENAME_LEDGER"
@@ -156,11 +195,11 @@ already_uploaded() {
 process_teaching_folder() {
   echo "=== Teaching folder mode ==="
   shopt -s nullglob
-  local files=("$SCRIPT_DIR/10psj-teaching"/*.MOV "$SCRIPT_DIR/10psj-teaching"/*.mov)
+  local files=("$SCRIPT_DIR/teaching"/*.MOV "$SCRIPT_DIR/teaching"/*.mov)
   shopt -u nullglob
 
   if [[ ${#files[@]} -eq 0 ]]; then
-    echo "No teaching files found in 10psj-teaching/."
+    echo "No teaching files found in teaching/."
     return 0
   fi
 
@@ -392,40 +431,27 @@ if $TEACHING_ONLY; then
   exit 0
 fi
 
-# --- Collect all input files with location tags ---
+# --- Collect all input files from rolling/ with GPS-detected location tags ---
 # Format per line: epoch|filepath|location
 work_list=""
 
-# Scan location subdirectories
-for loc_dir in "$SCRIPT_DIR/10psj" "$SCRIPT_DIR/10psm"; do
-  if [[ -d "$loc_dir" ]]; then
-    loc=$(basename "$loc_dir")
-    [[ -n "$LOC_FILTER" && "$loc" != "$LOC_FILTER" ]] && continue
-    while IFS= read -r f; do
-      [[ -z "$f" ]] && continue
-      fname=$(basename "$f")
-      # Skip processed files
-      [[ "$fname" == *"-ytready"* || "$fname" == *"-compressed"* || "$fname" == *"-teaching-class-fc"* || "$fname" == *"-rolling-footage"* ]] && continue
-      ep=$(get_epoch "$f")
-      [[ -z "$ep" ]] && { echo "WARN: No creation_time for $fname, skipping."; continue; }
-      work_list="${work_list}${ep}|${f}|${loc}"$'\n'
-    done < <(find "$loc_dir" -maxdepth 1 -iname "*.mov" 2>/dev/null)
-  fi
-done
-
-# Scan top-level (10p fallback)
-if [[ -z "$LOC_FILTER" || "$LOC_FILTER" == "10p" ]]; then
 while IFS= read -r f; do
   [[ -z "$f" ]] && continue
   fname=$(basename "$f")
   [[ "$fname" == *"-ytready"* || "$fname" == *"-compressed"* || "$fname" == *"-teaching-class-fc"* || "$fname" == *"-rolling-footage"* ]] && continue
-  # Skip process.sh itself and non-video files
-  [[ "$fname" == "process.sh" ]] && continue
   ep=$(get_epoch "$f")
   [[ -z "$ep" ]] && { echo "WARN: No creation_time for $fname, skipping."; continue; }
-  work_list="${work_list}${ep}|${f}|10p"$'\n'
-done < <(find "$SCRIPT_DIR" -maxdepth 1 -iname "*.mov" 2>/dev/null)
-fi  # LOC_FILTER top-level guard
+  gps_loc=$(get_gps_loc "$f")
+  detected_loc="${gps_loc:-10p}"
+  if [[ -n "$gps_loc" ]]; then
+    echo "  [gps] $fname → $detected_loc (GPS)"
+  else
+    echo "  [gps] $fname → 10p (no GPS signal)"
+  fi
+  # Apply --loc filter against GPS-detected location
+  [[ -n "$LOC_FILTER" && "$detected_loc" != "$LOC_FILTER" ]] && continue
+  work_list="${work_list}${ep}|${f}|${detected_loc}"$'\n'
+done < <(find "$SCRIPT_DIR/rolling" -maxdepth 1 -iname "*.mov" 2>/dev/null)
 
 # Remove trailing empty lines
 work_list=$(echo "$work_list" | sed '/^$/d')
@@ -535,8 +561,7 @@ for i in "${!FILE_LIST[@]}"; do
   fi
 
   # --- Teaching video detection ---
-  # Rule: create teaching copy only for 10psm Mon/Wed/Fri ~6am videos.
-  # 10psj morning classes should NOT create a teaching copy.
+  # Rule: create teaching copy only for GPS-detected 10psm videos on Mon/Wed/Fri ~6am.
   teaching_sst_out=""
   teaching_yt_out=""
   is_teaching_day=false
