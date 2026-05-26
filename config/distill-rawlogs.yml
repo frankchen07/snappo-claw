@@ -1,0 +1,23 @@
+```yml
+# Ensure rawlogs file exists before processing
+rawlogs:
+  path: rawlogs/$(date +"%Y-%m-%d").md
+  create: true
+
+mem:
+  path: mem/$(date +"%Y-%m-%d").md
+  max_lines: 200
+  sections:
+    - problems
+    - opportunities
+    - observations/patterns
+    - insights/epiphanies
+    - decisions/rationale
+    - todos
+    - abnormalities/questions
+
+git:
+  add: mem/$(date +"%Y-%m-%d").md
+  commit_message: "Distilled rawlogs for $(date +"%Y-%m-%d")"
+  push: true
+```

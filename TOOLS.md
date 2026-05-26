@@ -1,0 +1,1 @@
+tools.sessions.visibility=all
