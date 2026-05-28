@@ -18,7 +18,7 @@ This folder tracks the 2003 Subaru WRX.
   - `ownership/` title, sale, carfax, initial checks
   - `placeholders/` future-dated placeholder docs for planned parts/services
 - `reports/`
-  - `current/` live human-readable snapshot
+  - `CURRENT.md` live human-readable snapshot
   - dated analysis and reconciliation notes
 - `scripts/`
   - helper scripts
